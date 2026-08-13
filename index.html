@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#050505" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fractal Lab" />
+  <title>Fractal Lab</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="stage">
+    <canvas id="canvas"></canvas>
+    <div class="topbar">
+      <div><b>FRACTAL LAB</b><span id="fps">60 FPS</span></div>
+      <button id="fullscreen" aria-label="Fullscreen">⛶</button>
+    </div>
+    <button id="panelToggle" class="panel-toggle" aria-label="Controls">☰</button>
+    <section id="panel" class="panel">
+      <div class="handle"></div>
+      <div class="actions">
+        <button id="play">Pause</button><button id="random">Randomize</button><button id="reset">Reset</button>
+      </div>
+      <label>Branches <output id="branchesOut"></output><input id="branches" type="range" min="2" max="12" step="1"></label>
+      <label>Depth <output id="depthOut"></output><input id="depth" type="range" min="2" max="9" step="1"></label>
+      <label>Spread <output id="spreadOut"></output><input id="spread" type="range" min="0" max="180" step="1"></label>
+      <label>Scale <output id="scaleOut"></output><input id="scale" type="range" min="45" max="82" step="1"></label>
+      <label>Twist <output id="twistOut"></output><input id="twist" type="range" min="-90" max="90" step="1"></label>
+      <label>Speed <output id="speedOut"></output><input id="speed" type="range" min="0" max="100" step="1"></label>
+      <label>Line width <output id="widthOut"></output><input id="width" type="range" min="4" max="30" step="1"></label>
+      <div class="row"><label class="color">Color <input id="color" type="color"></label><label class="switch">Glow <input id="glow" type="checkbox"><span></span></label></div>
+      <p class="hint">Drag to rotate • Pinch to zoom • Double-tap to reset view</p>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
