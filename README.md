@@ -1,17 +1,15 @@
-# Fractal Lab
+# Fractal Lab — iPhone performance build v3
 
-A dependency-free, iPhone-first generative fractal playground for GitHub Pages.
+Static GitHub Pages app. No build tools or dependencies.
 
-## Publish on GitHub Pages
-1. Create a GitHub repository.
-2. Upload `index.html`, `style.css`, `app.js`, and `manifest.webmanifest` to the repository root.
-3. Open **Settings > Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch** and select your main branch/root.
-5. Open the GitHub Pages URL on iPhone. Use Safari > Share > Add to Home Screen for an app-like launch.
+## What changed in v3
+- Fractal geometry is compiled into a cached `Path2D` only when shape controls change.
+- Animation performs no recursion and allocates no geometry per frame.
+- Geometry is capped at 2,400 line segments.
+- Canvas DPR is capped at 1 for predictable iPhone GPU cost.
+- Glow uses a second cached stroke instead of `shadowBlur`.
+- Animation is frame-paced at 30 FPS; paused mode performs no redraw work.
+- FPS display also shows the current line count.
 
-## Controls
-- Drag horizontally: rotate
-- Pinch / mouse wheel: zoom
-- Double tap: reset view
-- Sliders: branches, recursion depth, spread, scale, twist, animation speed, line width
-- Color, glow, randomize, pause, reset, fullscreen
+## Deploy
+Upload these files to a GitHub repository and enable GitHub Pages from the repository settings.
