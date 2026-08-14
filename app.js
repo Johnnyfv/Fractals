@@ -1,33 +1,56 @@
 (() => {
   const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d', { alpha: false });
+  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   const $ = id => document.getElementById(id);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isTouch = matchMedia('(pointer: coarse)').matches;
 
   const state = {
     mode: 'tree', angle: 28.3, scale: 0.707, depth: 9, glow: 16, hue: 105,
     playing: true, t: 0, dpr: 1
   };
 
-  let width = 0, height = 0, last = performance.now(), idleTimer;
-
+  let width = 0, height = 0, last = performance.now(), idleTimer, lastActivity = 0;
+  let frameBudget = 1;
   const controls = $('controls'), reveal = $('reveal');
+
+  function scheduleHide() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(hideControls, isTouch ? 3200 : 2500);
+  }
   function showControls() {
     controls.classList.remove('is-hidden');
     reveal.classList.remove('is-visible');
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(hideControls, 2500);
+    scheduleHide();
   }
   function hideControls() {
     controls.classList.add('is-hidden');
     reveal.classList.add('is-visible');
   }
 
+  function viewportSize() {
+    const vv = window.visualViewport;
+    return {
+      w: Math.round(vv?.width || document.documentElement.clientWidth || innerWidth),
+      h: Math.round(vv?.height || document.documentElement.clientHeight || innerHeight)
+    };
+  }
+
   function resize() {
-    state.dpr = Math.min(devicePixelRatio || 1, 2);
-    width = innerWidth; height = innerHeight;
-    canvas.width = Math.floor(width * state.dpr);
-    canvas.height = Math.floor(height * state.dpr);
-    canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+    const { w, h } = viewportSize();
+    width = w; height = h;
+
+    const rawDpr = devicePixelRatio || 1;
+    const pixelCount = width * height * rawDpr * rawDpr;
+    // Keep Retina sharpness but cap very large iPhones/iPads to avoid thermal throttling.
+    const maxPixels = isIOS ? 4_600_000 : 6_500_000;
+    const scale = pixelCount > maxPixels ? Math.sqrt(maxPixels / (width * height)) : rawDpr;
+    state.dpr = Math.max(1, Math.min(rawDpr, scale, isIOS ? 2 : 2.25));
+
+    canvas.width = Math.max(1, Math.floor(width * state.dpr));
+    canvas.height = Math.max(1, Math.floor(height * state.dpr));
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
   }
 
@@ -39,7 +62,7 @@
   function beginStroke(depth, alpha = .9, widthPx = 1) {
     ctx.strokeStyle = color(depth, alpha);
     ctx.lineWidth = widthPx;
-    ctx.shadowBlur = state.glow;
+    ctx.shadowBlur = isIOS ? state.glow * .78 : state.glow;
     ctx.shadowColor = color(depth, .75);
   }
 
@@ -55,13 +78,11 @@
   }
 
   function drawTree() {
-    const a = state.angle * Math.PI / 180;
     const pulse = .94 + Math.sin(state.t * .75) * .025;
     const len = Math.min(width, height) * .23 * pulse;
-    const d = state.depth;
+    const d = Math.min(state.depth, isIOS && width * height > 700000 ? 10 : state.depth);
     branch(width / 2, height / 2, len, -Math.PI / 2, d);
     branch(width / 2, height / 2, len, Math.PI / 2, d);
-    // Side copies recreate the clipped, kaleidoscopic feel from the reference.
     if (width > height * .7) {
       branch(0, height / 2, len * .72, 0, Math.max(3, d - 1));
       branch(width, height / 2, len * .72, Math.PI, Math.max(3, d - 1));
@@ -95,11 +116,12 @@
     const r = Math.min(width, height) * .18;
     const cols = Math.ceil(width / (r * 2.4)) + 2;
     const rows = Math.ceil(height / (r * 2.05)) + 2;
+    const maxDepth = isIOS ? 4 : 5;
     for (let row = -1; row < rows; row++) {
       for (let col = -1; col < cols; col++) {
         const x = col * r * 2.3 + (row % 2) * r * 1.15;
         const y = row * r * 2.0;
-        recursiveHex(x, y, r, Math.min(state.depth, 5), state.t * .012);
+        recursiveHex(x, y, r, Math.min(state.depth, maxDepth), state.t * .012);
       }
     }
   }
@@ -111,9 +133,10 @@
     ctx.translate(width / 2, height / 2);
     ctx.rotate(Math.sin(state.t * .08) * .01);
     const span = Math.hypot(width, height) * .8;
-    for (let i = -Math.ceil(span / spacing); i <= Math.ceil(span / spacing); i++) {
+    const stepLimit = isIOS ? 1.2 : 1;
+    for (let i = -Math.ceil(span / spacing); i <= Math.ceil(span / spacing); i += stepLimit) {
       const o = i * spacing;
-      beginStroke(Math.abs(i) % state.depth + 1, .36, .72);
+      beginStroke(Math.abs(Math.round(i)) % state.depth + 1, .36, .72);
       ctx.beginPath();
       ctx.moveTo(-span, o - Math.tan(tilt) * span * .08);
       ctx.lineTo(span, o + Math.tan(tilt) * span * .08);
@@ -123,10 +146,10 @@
       ctx.lineTo(o + Math.tan(tilt) * span * .08, span);
       ctx.stroke();
     }
-    // Short perpendicular ticks produce the ladder-like reference texture.
-    ctx.shadowBlur = state.glow * .45;
-    for (let y = -span; y < span; y += spacing * 2) {
-      for (let x = -span; x < span; x += spacing * 2) {
+    ctx.shadowBlur = state.glow * .4;
+    const tickStep = isIOS ? spacing * 2.5 : spacing * 2;
+    for (let y = -span; y < span; y += tickStep) {
+      for (let x = -span; x < span; x += tickStep) {
         beginStroke(((x + y) / spacing | 0) % state.depth + state.depth, .28, .6);
         ctx.beginPath();
         ctx.moveTo(x - spacing * .28, y); ctx.lineTo(x + spacing * .28, y); ctx.stroke();
@@ -138,11 +161,17 @@
   function render(now) {
     const dt = Math.min(.05, (now - last) / 1000); last = now;
     if (state.playing) state.t += dt;
-    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, width, height);
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    if (state.mode === 'hex') drawHex(); else if (state.mode === 'weave') drawWeave(); else drawTree();
-    ctx.shadowBlur = 0;
+
+    // On hot/high-density iOS devices, gracefully render at ~30fps instead of janking.
+    frameBudget ^= 1;
+    const shouldDraw = !isIOS || state.dpr < 1.8 || frameBudget === 0 || !state.playing;
+    if (shouldDraw) {
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, width, height);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (state.mode === 'hex') drawHex(); else if (state.mode === 'weave') drawWeave(); else drawTree();
+      ctx.shadowBlur = 0;
+    }
     requestAnimationFrame(render);
   }
 
@@ -179,11 +208,41 @@
   });
   $('collapse').addEventListener('click', hideControls);
   reveal.addEventListener('click', showControls);
-  addEventListener('resize', resize);
-  ['pointermove','pointerdown','touchstart'].forEach(evt => addEventListener(evt, showControls, {passive:true}));
+
+  function activity() {
+    const now = performance.now();
+    if (now - lastActivity < 120) return;
+    lastActivity = now;
+    showControls();
+  }
+
+  addEventListener('resize', resize, { passive: true });
+  addEventListener('orientationchange', () => setTimeout(resize, 120), { passive: true });
+  window.visualViewport?.addEventListener('resize', resize, { passive: true });
+
+  if (isTouch) {
+    addEventListener('pointerdown', activity, { passive: true });
+  } else {
+    addEventListener('pointermove', activity, { passive: true });
+    addEventListener('pointerdown', activity, { passive: true });
+  }
+
   addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'c') controls.classList.contains('is-hidden') ? showControls() : hideControls();
     else showControls();
+  });
+
+  // Prevent Safari's gesture zoom and accidental page scrolling over the artwork.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
+    document.addEventListener(type, e => e.preventDefault(), { passive: false });
+  });
+  document.addEventListener('touchmove', e => {
+    if (e.target === canvas) e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('visibilitychange', () => {
+    last = performance.now();
+    if (!document.hidden) resize();
   });
 
   resize(); sync(); showControls(); requestAnimationFrame(render);
