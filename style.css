@@ -85,6 +85,7 @@ select {
   background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
 }
 .buttonRow { display:grid; grid-template-columns: 1fr 1fr; gap:9px; margin-top:14px; }
+.buttonRow--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .action { min-height: 46px; border-radius: 13px; cursor:pointer; font-weight:650; }
 .action--primary { background: rgba(109,255,207,.14); border-color: rgba(109,255,207,.35); }
 .hint { color: rgba(255,255,255,.48); font-size:11px; line-height:1.45; margin: 11px 2px 0; }
@@ -109,6 +110,7 @@ kbd { font: inherit; border:1px solid var(--line); border-bottom-width:2px; bord
     max-height: min(72dvh, 560px);
   }
   .grabber { display:block; }
+  .buttonRow--three { grid-template-columns: 1fr; }
   .hint { display:none; }
   h1 { font-size: 21px; }
   .field { margin-top: 9px; }

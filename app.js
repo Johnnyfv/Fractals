@@ -7,8 +7,10 @@
 
   const state = {
     mode: 'tree', angle: 28.3, scale: 0.707, depth: 9, glow: 16, hue: 105,
-    playing: true, t: 0, dpr: 1
+    playing: true, autoCycle: true, cycleSpeed: 6, cycleElapsed: 0, t: 0, dpr: 1
   };
+
+  const modes = ['tree', 'hex', 'weave'];
 
   let width = 0, height = 0, last = performance.now(), idleTimer, lastActivity = 0;
   let frameBudget = 1;
@@ -160,7 +162,18 @@
 
   function render(now) {
     const dt = Math.min(.05, (now - last) / 1000); last = now;
-    if (state.playing) state.t += dt;
+    if (state.playing) {
+      state.t += dt;
+      if (state.autoCycle) {
+        state.cycleElapsed += dt;
+        if (state.cycleElapsed >= state.cycleSpeed) {
+          state.cycleElapsed %= state.cycleSpeed;
+          const next = (modes.indexOf(state.mode) + 1) % modes.length;
+          state.mode = modes[next];
+          $('mode').value = state.mode;
+        }
+      }
+    }
 
     // On hot/high-density iOS devices, gracefully render at ~30fps instead of janking.
     frameBudget ^= 1;
@@ -181,12 +194,14 @@
     $('depthOut').textContent = state.depth;
     $('glowOut').textContent = state.glow;
     $('hueOut').textContent = state.hue + '°';
+    $('cycleOut').textContent = state.cycleSpeed.toFixed(1) + 's';
     $('hudAngle').textContent = state.angle.toFixed(3);
     $('hudScale').textContent = state.scale.toFixed(3);
   }
 
   const binds = [
-    ['mode', v => state.mode = v],
+    ['mode', v => { state.mode = v; state.cycleElapsed = 0; }],
+    ['cycleSpeed', v => { state.cycleSpeed = +v; state.cycleElapsed = 0; }],
     ['angle', v => state.angle = +v], ['scale', v => state.scale = +v],
     ['depth', v => state.depth = +v], ['glow', v => state.glow = +v], ['hue', v => state.hue = +v]
   ];
@@ -200,6 +215,14 @@
     ['angle','scale','depth','hue'].forEach(id => $(id).value = state[id]);
     sync(); showControls();
   });
+  $('cycleToggle').addEventListener('click', e => {
+    state.autoCycle = !state.autoCycle;
+    state.cycleElapsed = 0;
+    e.currentTarget.textContent = state.autoCycle ? 'Auto-cycle: On' : 'Auto-cycle: Off';
+    e.currentTarget.setAttribute('aria-pressed', String(state.autoCycle));
+    showControls();
+  });
+
   $('animate').addEventListener('click', e => {
     state.playing = !state.playing;
     e.currentTarget.textContent = state.playing ? 'Pause' : 'Play';

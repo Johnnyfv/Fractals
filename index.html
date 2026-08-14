@@ -2,12 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Recursive Neon" />
-  <meta name="mobile-web-app-capable" content="yes" />
   <title>Recursive Neon</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -22,7 +18,6 @@
   <button id="reveal" class="reveal" aria-label="Show controls" title="Show controls">☰</button>
 
   <aside id="controls" class="controls" aria-label="Artwork controls">
-    <div class="grabber" aria-hidden="true"></div>
     <header class="controls__header">
       <div>
         <div class="eyebrow">RECURSIVE NEON</div>
@@ -38,6 +33,11 @@
         <option value="hex">Hex recursion</option>
         <option value="weave">Infinite weave</option>
       </select>
+    </label>
+
+    <label class="field">
+      <span>Cycle speed <output id="cycleOut">6.0s</output></span>
+      <input id="cycleSpeed" type="range" min="1" max="20" step="0.5" value="6" />
     </label>
 
     <label class="field">
@@ -65,12 +65,13 @@
       <input id="hue" type="range" min="0" max="240" step="1" value="105" />
     </label>
 
-    <div class="buttonRow">
+    <div class="buttonRow buttonRow--three">
       <button id="randomize" class="action">Randomize</button>
-      <button id="animate" class="action action--primary" aria-pressed="true">Pause</button>
+      <button id="cycleToggle" class="action action--primary" aria-pressed="true">Auto-cycle: On</button>
+      <button id="animate" class="action" aria-pressed="true">Pause</button>
     </div>
 
-    <p class="hint">Controls hide automatically. Tap anywhere or press <kbd>C</kbd> to bring them back.</p>
+    <p class="hint">Modes cycle automatically. Adjust Cycle speed to control how long each shape stays on screen. Controls hide automatically after 2.5 seconds.</p>
   </aside>
 
   <script src="app.js"></script>
