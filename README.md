@@ -1,15 +1,31 @@
-# Fractal Lab — iPhone performance build v3
+# Recursive Neon
 
-Static GitHub Pages app. No build tools or dependencies.
+A dependency-free generative art app recreated from the supplied reference video. It is designed to run directly on GitHub Pages.
 
-## What changed in v3
-- Fractal geometry is compiled into a cached `Path2D` only when shape controls change.
-- Animation performs no recursion and allocates no geometry per frame.
-- Geometry is capped at 2,400 line segments.
-- Canvas DPR is capped at 1 for predictable iPhone GPU cost.
-- Glow uses a second cached stroke instead of `shadowBlur`.
-- Animation is frame-paced at 30 FPS; paused mode performs no redraw work.
-- FPS display also shows the current line count.
+## Run locally
 
-## Deploy
-Upload these files to a GitHub repository and enable GitHub Pages from the repository settings.
+Open `index.html` in a browser. For the most consistent behavior, serve the folder with any static server, for example:
+
+```bash
+python3 -m http.server 8000
+```
+
+Then open `http://localhost:8000`.
+
+## Publish on GitHub Pages
+
+1. Create a new GitHub repository.
+2. Upload `index.html`, `style.css`, and `app.js` to the repository root.
+3. In **Settings → Pages**, choose **Deploy from a branch**.
+4. Select the `main` branch and `/ (root)`, then save.
+5. GitHub will provide the public Pages URL.
+
+## Interaction
+
+- Controls auto-hide after 2.5 seconds of inactivity.
+- Move the pointer, tap, or press any key to restore them.
+- Press `C` to toggle the control panel manually.
+- Three visual modes are included: Recursive tree, Hex recursion, and Infinite weave.
+- Use Randomize for quick variations.
+
+No frameworks, packages, build tools, or external assets are required.

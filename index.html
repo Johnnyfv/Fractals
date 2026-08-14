@@ -2,39 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-  <meta name="theme-color" content="#050505" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Fractal Lab" />
-  <title>Fractal Lab</title>
-  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title>Recursive Neon</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main id="stage">
-    <canvas id="canvas"></canvas>
-    <div class="topbar">
-      <div><b>FRACTAL LAB</b><span id="fps">60 FPS</span></div>
-      <button id="fullscreen" aria-label="Fullscreen">⛶</button>
-    </div>
-    <button id="panelToggle" class="panel-toggle" aria-label="Controls">☰</button>
-    <section id="panel" class="panel">
-      <div class="handle"></div>
-      <div class="actions">
-        <button id="play">Pause</button><button id="random">Randomize</button><button id="reset">Reset</button>
+  <canvas id="canvas" aria-label="Generative recursive artwork"></canvas>
+
+  <div id="hud" class="hud" aria-live="polite">
+    <div id="hudAngle">28.323</div>
+    <div id="hudScale">0.707</div>
+  </div>
+
+  <button id="reveal" class="reveal" aria-label="Show controls" title="Show controls">☰</button>
+
+  <aside id="controls" class="controls" aria-label="Artwork controls">
+    <header class="controls__header">
+      <div>
+        <div class="eyebrow">RECURSIVE NEON</div>
+        <h1>Generator</h1>
       </div>
-      <label>Branches <output id="branchesOut"></output><input id="branches" type="range" min="2" max="12" step="1"></label>
-      <label>Depth <output id="depthOut"></output><input id="depth" type="range" min="2" max="9" step="1"></label>
-      <label>Spread <output id="spreadOut"></output><input id="spread" type="range" min="0" max="180" step="1"></label>
-      <label>Scale <output id="scaleOut"></output><input id="scale" type="range" min="45" max="82" step="1"></label>
-      <label>Twist <output id="twistOut"></output><input id="twist" type="range" min="-90" max="90" step="1"></label>
-      <label>Speed <output id="speedOut"></output><input id="speed" type="range" min="0" max="100" step="1"></label>
-      <label>Line width <output id="widthOut"></output><input id="width" type="range" min="4" max="30" step="1"></label>
-      <div class="row"><label class="color">Color <input id="color" type="color"></label><label class="switch">Glow <input id="glow" type="checkbox"><span></span></label></div>
-      <p class="hint">Drag to rotate • Pinch to zoom • Double-tap to reset view</p>
-    </section>
-  </main>
+      <button id="collapse" class="iconButton" aria-label="Hide controls" title="Hide controls">×</button>
+    </header>
+
+    <label class="field">
+      <span>Mode</span>
+      <select id="mode">
+        <option value="tree">Recursive tree</option>
+        <option value="hex">Hex recursion</option>
+        <option value="weave">Infinite weave</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Angle <output id="angleOut">28.3°</output></span>
+      <input id="angle" type="range" min="4" max="88" step="0.1" value="28.3" />
+    </label>
+
+    <label class="field">
+      <span>Scale <output id="scaleOut">0.707</output></span>
+      <input id="scale" type="range" min="0.45" max="0.82" step="0.001" value="0.707" />
+    </label>
+
+    <label class="field">
+      <span>Depth <output id="depthOut">9</output></span>
+      <input id="depth" type="range" min="3" max="12" step="1" value="9" />
+    </label>
+
+    <label class="field">
+      <span>Line glow <output id="glowOut">16</output></span>
+      <input id="glow" type="range" min="0" max="36" step="1" value="16" />
+    </label>
+
+    <label class="field">
+      <span>Hue drift <output id="hueOut">105°</output></span>
+      <input id="hue" type="range" min="0" max="240" step="1" value="105" />
+    </label>
+
+    <div class="buttonRow">
+      <button id="randomize" class="action">Randomize</button>
+      <button id="animate" class="action action--primary" aria-pressed="true">Pause</button>
+    </div>
+
+    <p class="hint">Controls hide automatically after 2.5 seconds. Move the pointer, tap, or press <kbd>C</kbd> to bring them back.</p>
+  </aside>
+
   <script src="app.js"></script>
 </body>
 </html>
