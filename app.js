@@ -1,30 +1,51 @@
 (() => {
+  'use strict';
+
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   const $ = id => document.getElementById(id);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
+  const MORPH_MIN = 2;
+  const MORPH_MAX = 90;
+
   const state = {
-    mode: 'tree', angle: 28.3, scale: 0.707, depth: 9, glow: 16, hue: 105,
-    playing: true, autoCycle: true, cycleSpeed: 6, cycleElapsed: 0, t: 0, dpr: 1
+    angle: 28.3,
+    scale: 0.707,
+    depth: 11,
+    glow: 14,
+    hue: 105,
+    morphSpeed: 3.5,
+    direction: 1,
+    playing: true,
+    dpr: 1
   };
 
-  const modes = ['tree', 'hex', 'weave'];
+  let width = 0;
+  let height = 0;
+  let lastFrame = performance.now();
+  let lastUiSync = 0;
+  let idleTimer = 0;
+  let lastActivity = 0;
+  let frameParity = 0;
 
-  let width = 0, height = 0, last = performance.now(), idleTimer, lastActivity = 0;
-  let frameBudget = 1;
-  const controls = $('controls'), reveal = $('reveal');
+  const controls = $('controls');
+  const reveal = $('reveal');
 
   function scheduleHide() {
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(hideControls, isTouch ? 3200 : 2500);
+    idleTimer = setTimeout(hideControls, isTouch ? 3300 : 2600);
   }
+
   function showControls() {
     controls.classList.remove('is-hidden');
     reveal.classList.remove('is-visible');
     scheduleHide();
   }
+
   function hideControls() {
     controls.classList.add('is-hidden');
     reveal.classList.add('is-visible');
@@ -40,14 +61,13 @@
 
   function resize() {
     const { w, h } = viewportSize();
-    width = w; height = h;
+    width = Math.max(1, w);
+    height = Math.max(1, h);
 
-    const rawDpr = devicePixelRatio || 1;
-    const pixelCount = width * height * rawDpr * rawDpr;
-    // Keep Retina sharpness but cap very large iPhones/iPads to avoid thermal throttling.
-    const maxPixels = isIOS ? 4_600_000 : 6_500_000;
-    const scale = pixelCount > maxPixels ? Math.sqrt(maxPixels / (width * height)) : rawDpr;
-    state.dpr = Math.max(1, Math.min(rawDpr, scale, isIOS ? 2 : 2.25));
+    const rawDpr = window.devicePixelRatio || 1;
+    const maxPixels = isIOS ? 4_500_000 : 6_500_000;
+    const pixelLimitedDpr = Math.sqrt(maxPixels / (width * height));
+    state.dpr = Math.max(1, Math.min(rawDpr, pixelLimitedDpr, isIOS ? 2 : 2.25));
 
     canvas.width = Math.max(1, Math.floor(width * state.dpr));
     canvas.height = Math.max(1, Math.floor(height * state.dpr));
@@ -56,179 +76,202 @@
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
   }
 
-  const color = (depth, a = 1) => {
-    const h = (185 + depth * state.hue / Math.max(1, state.depth) + state.t * 6) % 360;
-    return `hsla(${h}, 92%, ${58 + Math.sin(depth * 1.7) * 8}%, ${a})`;
-  };
-
-  function beginStroke(depth, alpha = .9, widthPx = 1) {
-    ctx.strokeStyle = color(depth, alpha);
-    ctx.lineWidth = widthPx;
-    ctx.shadowBlur = isIOS ? state.glow * .78 : state.glow;
-    ctx.shadowColor = color(depth, .75);
+  function colorForDepth(depth, alpha = 1) {
+    // Root starts magenta; the finest tips migrate toward electric blue/cyan.
+    const normalized = depth / Math.max(1, state.depth);
+    const hue = (185 + normalized * state.hue) % 360;
+    const lightness = 55 + normalized * 4;
+    return `hsla(${hue}, 94%, ${lightness}%, ${alpha})`;
   }
 
-  function branch(x, y, len, heading, depth) {
-    if (depth <= 0 || len < .8) return;
-    const x2 = x + Math.cos(heading) * len;
-    const y2 = y + Math.sin(heading) * len;
-    beginStroke(depth, .62 + depth / state.depth * .22, Math.max(.55, depth / state.depth * 1.35));
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
-    const a = state.angle * Math.PI / 180;
-    branch(x2, y2, len * state.scale, heading - a, depth - 1);
-    branch(x2, y2, len * state.scale, heading + a, depth - 1);
+  function effectiveDepth() {
+    // With batched Path2D strokes, 11-12 levels remain practical on iOS.
+    // Very large iPads get one less level to avoid sustained thermal throttling.
+    if (isIOS && width * height > 1_050_000) return Math.min(state.depth, 11);
+    return Math.min(state.depth, 12);
   }
 
-  function drawTree() {
-    const pulse = .94 + Math.sin(state.t * .75) * .025;
-    const len = Math.min(width, height) * .23 * pulse;
-    const d = Math.min(state.depth, isIOS && width * height > 700000 ? 10 : state.depth);
-    branch(width / 2, height / 2, len, -Math.PI / 2, d);
-    branch(width / 2, height / 2, len, Math.PI / 2, d);
-    if (width > height * .7) {
-      branch(0, height / 2, len * .72, 0, Math.max(3, d - 1));
-      branch(width, height / 2, len * .72, Math.PI, Math.max(3, d - 1));
+  function buildTreePaths(depth, branchLength) {
+    const paths = Array.from({ length: depth + 1 }, () => new Path2D());
+    const turn = state.angle * Math.PI / 180;
+    const scale = state.scale;
+
+    function trace(x, y, len, heading, level) {
+      if (level <= 0 || len < 0.45) return;
+
+      const x2 = x + Math.cos(heading) * len;
+      const y2 = y + Math.sin(heading) * len;
+      const path = paths[level];
+      path.moveTo(x, y);
+      path.lineTo(x2, y2);
+
+      const nextLength = len * scale;
+      trace(x2, y2, nextLength, heading - turn, level - 1);
+      trace(x2, y2, nextLength, heading + turn, level - 1);
     }
+
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    trace(cx, cy, branchLength, -Math.PI / 2, depth);
+    trace(cx, cy, branchLength, Math.PI / 2, depth);
+    return paths;
   }
 
-  function hexPath(x, y, r, rotation = 0) {
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = rotation + i * Math.PI / 3;
-      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
-      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  function drawMorphTree() {
+    const depth = effectiveDepth();
+    // Width-driven sizing closely matches the portrait reference and remains stable
+    // as Safari's browser chrome expands/collapses.
+    const branchLength = Math.min(width * 0.245, height * 0.185);
+    const paths = buildTreePaths(depth, branchLength);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (let level = 1; level <= depth; level++) {
+      const strength = level / depth;
+      const alpha = 0.48 + strength * 0.42;
+      ctx.strokeStyle = colorForDepth(level, alpha);
+      ctx.shadowColor = colorForDepth(level, 0.72);
+      ctx.shadowBlur = state.glow * (isIOS ? 0.72 : 0.88);
+      ctx.lineWidth = 0.48 + strength * 1.05;
+      ctx.stroke(paths[level]);
     }
-    ctx.closePath();
+
+    ctx.shadowBlur = 0;
   }
 
-  function recursiveHex(x, y, r, depth, rot) {
-    if (depth <= 0 || r < 3) return;
-    beginStroke(depth, .72, Math.max(.5, depth / state.depth));
-    hexPath(x, y, r, rot); ctx.stroke();
-    const child = r * state.scale * .52;
-    const travel = r * (1 - state.scale * .13);
-    const a0 = state.angle * Math.PI / 180 + rot;
-    for (let i = 0; i < 6; i++) {
-      const a = a0 + i * Math.PI / 3;
-      recursiveHex(x + Math.cos(a) * travel, y + Math.sin(a) * travel, child, depth - 1, rot + .03);
-    }
-  }
+  function advanceMorph(dt) {
+    if (!state.playing || state.morphSpeed <= 0) return;
 
-  function drawHex() {
-    const r = Math.min(width, height) * .18;
-    const cols = Math.ceil(width / (r * 2.4)) + 2;
-    const rows = Math.ceil(height / (r * 2.05)) + 2;
-    const maxDepth = isIOS ? 4 : 5;
-    for (let row = -1; row < rows; row++) {
-      for (let col = -1; col < cols; col++) {
-        const x = col * r * 2.3 + (row % 2) * r * 1.15;
-        const y = row * r * 2.0;
-        recursiveHex(x, y, r, Math.min(state.depth, maxDepth), state.t * .012);
-      }
-    }
-  }
+    let next = state.angle + state.direction * state.morphSpeed * dt;
 
-  function drawWeave() {
-    const spacing = Math.max(15, Math.min(width, height) * (.035 + (1 - state.scale) * .05));
-    const tilt = state.angle * Math.PI / 180;
-    ctx.save();
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate(Math.sin(state.t * .08) * .01);
-    const span = Math.hypot(width, height) * .8;
-    const stepLimit = isIOS ? 1.2 : 1;
-    for (let i = -Math.ceil(span / spacing); i <= Math.ceil(span / spacing); i += stepLimit) {
-      const o = i * spacing;
-      beginStroke(Math.abs(Math.round(i)) % state.depth + 1, .36, .72);
-      ctx.beginPath();
-      ctx.moveTo(-span, o - Math.tan(tilt) * span * .08);
-      ctx.lineTo(span, o + Math.tan(tilt) * span * .08);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(o - Math.tan(tilt) * span * .08, -span);
-      ctx.lineTo(o + Math.tan(tilt) * span * .08, span);
-      ctx.stroke();
-    }
-    ctx.shadowBlur = state.glow * .4;
-    const tickStep = isIOS ? spacing * 2.5 : spacing * 2;
-    for (let y = -span; y < span; y += tickStep) {
-      for (let x = -span; x < span; x += tickStep) {
-        beginStroke(((x + y) / spacing | 0) % state.depth + state.depth, .28, .6);
-        ctx.beginPath();
-        ctx.moveTo(x - spacing * .28, y); ctx.lineTo(x + spacing * .28, y); ctx.stroke();
-      }
-    }
-    ctx.restore();
-  }
-
-  function render(now) {
-    const dt = Math.min(.05, (now - last) / 1000); last = now;
-    if (state.playing) {
-      state.t += dt;
-      if (state.autoCycle) {
-        state.cycleElapsed += dt;
-        if (state.cycleElapsed >= state.cycleSpeed) {
-          state.cycleElapsed %= state.cycleSpeed;
-          const next = (modes.indexOf(state.mode) + 1) % modes.length;
-          state.mode = modes[next];
-          $('mode').value = state.mode;
-        }
+    // Ping-pong without a visual jump. The loop also handles a long frame after
+    // Safari returns from the background.
+    while (next > MORPH_MAX || next < MORPH_MIN) {
+      if (next > MORPH_MAX) {
+        next = MORPH_MAX - (next - MORPH_MAX);
+        state.direction = -1;
+      } else if (next < MORPH_MIN) {
+        next = MORPH_MIN + (MORPH_MIN - next);
+        state.direction = 1;
       }
     }
 
-    // On hot/high-density iOS devices, gracefully render at ~30fps instead of janking.
-    frameBudget ^= 1;
-    const shouldDraw = !isIOS || state.dpr < 1.8 || frameBudget === 0 || !state.playing;
-    if (shouldDraw) {
-      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, width, height);
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      if (state.mode === 'hex') drawHex(); else if (state.mode === 'weave') drawWeave(); else drawTree();
-      ctx.shadowBlur = 0;
-    }
-    requestAnimationFrame(render);
+    state.angle = next;
   }
 
-  function sync() {
-    $('angleOut').textContent = state.angle.toFixed(1) + '°';
+  function syncStaticUi() {
     $('scaleOut').textContent = state.scale.toFixed(3);
-    $('depthOut').textContent = state.depth;
-    $('glowOut').textContent = state.glow;
-    $('hueOut').textContent = state.hue + '°';
-    $('cycleOut').textContent = state.cycleSpeed.toFixed(1) + 's';
-    $('hudAngle').textContent = state.angle.toFixed(3);
+    $('depthOut').textContent = String(state.depth);
+    $('glowOut').textContent = String(state.glow);
+    $('hueOut').textContent = state.hue.toFixed(0) + '°';
+    $('speedOut').textContent = state.morphSpeed.toFixed(2) + '°/s';
     $('hudScale').textContent = state.scale.toFixed(3);
   }
 
-  const binds = [
-    ['mode', v => { state.mode = v; state.cycleElapsed = 0; }],
-    ['cycleSpeed', v => { state.cycleSpeed = +v; state.cycleElapsed = 0; }],
-    ['angle', v => state.angle = +v], ['scale', v => state.scale = +v],
-    ['depth', v => state.depth = +v], ['glow', v => state.glow = +v], ['hue', v => state.hue = +v]
-  ];
-  binds.forEach(([id, set]) => $(id).addEventListener('input', e => { set(e.target.value); sync(); showControls(); }));
+  function syncAngleUi(force = false, now = performance.now()) {
+    // DOM writes are throttled; the canvas still morphs every rendered frame.
+    if (!force && now - lastUiSync < 80) return;
+    lastUiSync = now;
+    $('angle').value = state.angle.toFixed(1);
+    $('angleOut').textContent = state.angle.toFixed(1) + '°';
+    $('hudAngle').textContent = state.angle.toFixed(3);
+  }
 
-  $('randomize').addEventListener('click', () => {
-    state.angle = 12 + Math.random() * 64;
-    state.scale = .56 + Math.random() * .20;
-    state.depth = 6 + Math.floor(Math.random() * 6);
-    state.hue = Math.floor(45 + Math.random() * 180);
-    ['angle','scale','depth','hue'].forEach(id => $(id).value = state[id]);
-    sync(); showControls();
+  function render(now) {
+    const dt = Math.min(0.08, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
+
+    advanceMorph(dt);
+    syncAngleUi(false, now);
+
+    // Cap only the hottest/highest-density iOS cases around 30 fps. Animation
+    // state still advances every RAF, so speed remains correct.
+    frameParity ^= 1;
+    const drawThisFrame = !isIOS || state.dpr < 1.82 || frameParity === 0 || !state.playing;
+
+    if (drawThisFrame) {
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, width, height);
+      drawMorphTree();
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  $('morphSpeed').addEventListener('input', e => {
+    state.morphSpeed = Number(e.target.value);
+    syncStaticUi();
+    showControls();
   });
-  $('cycleToggle').addEventListener('click', e => {
-    state.autoCycle = !state.autoCycle;
-    state.cycleElapsed = 0;
-    e.currentTarget.textContent = state.autoCycle ? 'Auto-cycle: On' : 'Auto-cycle: Off';
-    e.currentTarget.setAttribute('aria-pressed', String(state.autoCycle));
+
+  $('angle').addEventListener('input', e => {
+    state.angle = Number(e.target.value);
+    // Continue in the direction that has the most room after manual scrubbing.
+    if (state.angle >= MORPH_MAX - 0.1) state.direction = -1;
+    if (state.angle <= MORPH_MIN + 0.1) state.direction = 1;
+    syncAngleUi(true);
+    showControls();
+  });
+
+  $('scale').addEventListener('input', e => {
+    state.scale = Number(e.target.value);
+    syncStaticUi();
+    showControls();
+  });
+
+  $('depth').addEventListener('input', e => {
+    state.depth = Number(e.target.value);
+    syncStaticUi();
+    showControls();
+  });
+
+  $('glow').addEventListener('input', e => {
+    state.glow = Number(e.target.value);
+    syncStaticUi();
+    showControls();
+  });
+
+  $('hue').addEventListener('input', e => {
+    state.hue = Number(e.target.value);
+    syncStaticUi();
+    showControls();
+  });
+
+  $('reset').addEventListener('click', () => {
+    Object.assign(state, {
+      angle: 28.3,
+      scale: 0.707,
+      depth: 11,
+      glow: 14,
+      hue: 105,
+      morphSpeed: 3.5,
+      direction: 1,
+      playing: true
+    });
+
+    $('morphSpeed').value = state.morphSpeed;
+    $('angle').value = state.angle;
+    $('scale').value = state.scale;
+    $('depth').value = state.depth;
+    $('glow').value = state.glow;
+    $('hue').value = state.hue;
+    $('animate').textContent = 'Pause morph';
+    $('animate').setAttribute('aria-pressed', 'true');
+    syncStaticUi();
+    syncAngleUi(true);
     showControls();
   });
 
   $('animate').addEventListener('click', e => {
     state.playing = !state.playing;
-    e.currentTarget.textContent = state.playing ? 'Pause' : 'Play';
+    e.currentTarget.textContent = state.playing ? 'Pause morph' : 'Resume morph';
     e.currentTarget.setAttribute('aria-pressed', String(state.playing));
+    lastFrame = performance.now();
     showControls();
   });
+
   $('collapse').addEventListener('click', hideControls);
   reveal.addEventListener('click', showControls);
 
@@ -240,7 +283,7 @@
   }
 
   addEventListener('resize', resize, { passive: true });
-  addEventListener('orientationchange', () => setTimeout(resize, 120), { passive: true });
+  addEventListener('orientationchange', () => setTimeout(resize, 140), { passive: true });
   window.visualViewport?.addEventListener('resize', resize, { passive: true });
 
   if (isTouch) {
@@ -251,11 +294,17 @@
   }
 
   addEventListener('keydown', e => {
-    if (e.key.toLowerCase() === 'c') controls.classList.contains('is-hidden') ? showControls() : hideControls();
-    else showControls();
+    if (e.key.toLowerCase() === 'c') {
+      controls.classList.contains('is-hidden') ? showControls() : hideControls();
+    } else if (e.code === 'Space') {
+      e.preventDefault();
+      $('animate').click();
+    } else {
+      showControls();
+    }
   });
 
-  // Prevent Safari's gesture zoom and accidental page scrolling over the artwork.
+  // Keep the canvas feeling native on iOS Safari instead of panning/zooming the page.
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
     document.addEventListener(type, e => e.preventDefault(), { passive: false });
   });
@@ -264,9 +313,13 @@
   }, { passive: false });
 
   document.addEventListener('visibilitychange', () => {
-    last = performance.now();
+    lastFrame = performance.now();
     if (!document.hidden) resize();
   });
 
-  resize(); sync(); showControls(); requestAnimationFrame(render);
+  resize();
+  syncStaticUi();
+  syncAngleUi(true);
+  showControls();
+  requestAnimationFrame(render);
 })();

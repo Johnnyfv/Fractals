@@ -1,35 +1,28 @@
-# Recursive Neon
+# Recursive Neon Morph
 
-A dependency-free generative art app recreated from the supplied reference video. It is designed to run directly on GitHub Pages.
+A dependency-free GitHub Pages app based on the supplied reference video.
 
-## Run locally
+## What changed in this rebuild
 
-Open `index.html` in a browser. For the most consistent behavior, serve the folder with any static server, for example:
+The reference is not switching between unrelated shape presets. It is one symmetric binary recursive tree whose **branch angle changes continuously** while the scale remains around **0.707**. Changing that one angle naturally produces the tree, spiral/hexagonal, tiled, and H-grid structures seen in the video.
 
-```bash
-python3 -m http.server 8000
-```
+This build therefore:
 
-Then open `http://localhost:8000`.
+- starts at **28.3° / 0.707**, matching the supplied screenshot;
+- continuously morphs the angle between **2° and 90°** and back without jumps;
+- defaults to **3.5° per second**, close to the rate visible in the reference video;
+- exposes a **Morph speed** slider (0.25–12°/s);
+- keeps manual angle scrubbing, scale, depth, glow, and hue controls;
+- collapses the controls when idle;
+- batches recursion into one canvas path per depth, which is substantially faster on iOS Safari than stroking every branch individually;
+- caps rendering density on high-DPI iPhones/iPads to reduce heat and Safari memory pressure.
 
 ## Publish on GitHub Pages
 
-1. Create a new GitHub repository.
-2. Upload `index.html`, `style.css`, and `app.js` to the repository root.
-3. In **Settings → Pages**, choose **Deploy from a branch**.
-4. Select the `main` branch and `/ (root)`, then save.
-5. GitHub will provide the public Pages URL.
+1. Put `index.html`, `style.css`, and `app.js` in the root of your GitHub repository.
+2. Open **Settings → Pages**.
+3. Choose **Deploy from a branch**.
+4. Select your default branch and `/ (root)`.
+5. Save.
 
-## Interaction
-
-- Controls auto-hide after 2.5 seconds of inactivity.
-- Move the pointer, tap, or press any key to restore them.
-- Press `C` to toggle the control panel manually.
-- Three visual modes are included: Recursive tree, Hex recursion, and Infinite weave.
-- Auto-cycle is enabled by default and rotates through all three modes.
-- Use **Cycle speed** to set how many seconds each mode remains visible (1–20 seconds).
-- Auto-cycle can be toggled on/off without disabling the underlying animation.
-- Manual mode selection resets the cycle timer, so your selected shape gets a full interval.
-- Use Randomize for quick variations.
-
-No frameworks, packages, build tools, or external assets are required.
+No packages, framework, or build step are required.

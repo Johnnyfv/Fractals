@@ -2,76 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
   <meta name="theme-color" content="#000000" />
-  <title>Recursive Neon</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Recursive Neon" />
+  <title>Recursive Neon Morph</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <canvas id="canvas" aria-label="Generative recursive artwork"></canvas>
+  <canvas id="canvas" aria-label="Continuously morphing recursive artwork"></canvas>
 
-  <div id="hud" class="hud" aria-live="polite">
-    <div id="hudAngle">28.323</div>
+  <div id="hud" class="hud" aria-live="off">
+    <div id="hudAngle">28.300</div>
     <div id="hudScale">0.707</div>
   </div>
 
   <button id="reveal" class="reveal" aria-label="Show controls" title="Show controls">☰</button>
 
   <aside id="controls" class="controls" aria-label="Artwork controls">
+    <div class="grabber" aria-hidden="true"></div>
     <header class="controls__header">
       <div>
         <div class="eyebrow">RECURSIVE NEON</div>
-        <h1>Generator</h1>
+        <h1>Continuous Morph</h1>
       </div>
       <button id="collapse" class="iconButton" aria-label="Hide controls" title="Hide controls">×</button>
     </header>
 
-    <label class="field">
-      <span>Mode</span>
-      <select id="mode">
-        <option value="tree">Recursive tree</option>
-        <option value="hex">Hex recursion</option>
-        <option value="weave">Infinite weave</option>
-      </select>
-    </label>
-
-    <label class="field">
-      <span>Cycle speed <output id="cycleOut">6.0s</output></span>
-      <input id="cycleSpeed" type="range" min="1" max="20" step="0.5" value="6" />
+    <label class="field field--primary">
+      <span>Morph speed <output id="speedOut">3.50°/s</output></span>
+      <input id="morphSpeed" type="range" min="0.25" max="12" step="0.25" value="3.5" />
     </label>
 
     <label class="field">
       <span>Angle <output id="angleOut">28.3°</output></span>
-      <input id="angle" type="range" min="4" max="88" step="0.1" value="28.3" />
+      <input id="angle" type="range" min="2" max="90" step="0.1" value="28.3" />
     </label>
 
     <label class="field">
       <span>Scale <output id="scaleOut">0.707</output></span>
-      <input id="scale" type="range" min="0.45" max="0.82" step="0.001" value="0.707" />
+      <input id="scale" type="range" min="0.50" max="0.80" step="0.001" value="0.707" />
     </label>
 
     <label class="field">
-      <span>Depth <output id="depthOut">9</output></span>
-      <input id="depth" type="range" min="3" max="12" step="1" value="9" />
+      <span>Depth <output id="depthOut">11</output></span>
+      <input id="depth" type="range" min="6" max="13" step="1" value="11" />
     </label>
 
     <label class="field">
-      <span>Line glow <output id="glowOut">16</output></span>
-      <input id="glow" type="range" min="0" max="36" step="1" value="16" />
+      <span>Glow <output id="glowOut">14</output></span>
+      <input id="glow" type="range" min="0" max="30" step="1" value="14" />
     </label>
 
     <label class="field">
-      <span>Hue drift <output id="hueOut">105°</output></span>
-      <input id="hue" type="range" min="0" max="240" step="1" value="105" />
+      <span>Hue spread <output id="hueOut">105°</output></span>
+      <input id="hue" type="range" min="0" max="220" step="1" value="105" />
     </label>
 
-    <div class="buttonRow buttonRow--three">
-      <button id="randomize" class="action">Randomize</button>
-      <button id="cycleToggle" class="action action--primary" aria-pressed="true">Auto-cycle: On</button>
-      <button id="animate" class="action" aria-pressed="true">Pause</button>
+    <div class="buttonRow">
+      <button id="reset" class="action">Reset</button>
+      <button id="animate" class="action action--primary" aria-pressed="true">Pause morph</button>
     </div>
 
-    <p class="hint">Modes cycle automatically. Adjust Cycle speed to control how long each shape stays on screen. Controls hide automatically after 2.5 seconds.</p>
+    <p class="hint">The artwork is one recursive tree. Its branch angle continuously sweeps from 2° to 90° and back, naturally morphing through the different structures in the reference video.</p>
   </aside>
 
   <script src="app.js"></script>
