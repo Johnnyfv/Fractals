@@ -3,37 +3,57 @@
 
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+  const fxCanvas = document.createElement('canvas');
+  const fxCtx = fxCanvas.getContext('2d', { alpha: false, desynchronized: true });
   const $ = id => document.getElementById(id);
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
-  const MORPH_MIN = 2;
-  const MORPH_MAX = 90;
-
   const state = {
-    angle: 28.3,
-    scale: 0.707,
+    phase: 28.3,
+    baseScale: 0.707,
     depth: 11,
     glow: 14,
-    hue: 105,
-    morphSpeed: 3.5,
-    direction: 1,
+    hue: 120,
+    morphSpeed: 7.5,
+    layerEnabled: true,
+    layerIntensity: 0.62,
     playing: true,
     dpr: 1
   };
 
+  const derived = {
+    angle: 28.3,
+    scale: 0.707,
+    colorDrift: 0,
+    layerRotation: 0,
+    ringPulse: 0
+  };
+
   let width = 0;
   let height = 0;
+  let fxWidth = 0;
+  let fxHeight = 0;
   let lastFrame = performance.now();
   let lastUiSync = 0;
   let idleTimer = 0;
   let lastActivity = 0;
   let frameParity = 0;
+  let layerFrameParity = 0;
 
   const controls = $('controls');
   const reveal = $('reveal');
+
+  function clamp(v, min, max) {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  function wrapDegrees(v) {
+    v %= 360;
+    return v < 0 ? v + 360 : v;
+  }
 
   function scheduleHide() {
     clearTimeout(idleTimer);
@@ -74,108 +94,268 @@
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+
+    const fxScale = isIOS ? 0.52 : 0.62;
+    fxWidth = Math.max(220, Math.floor(width * fxScale));
+    fxHeight = Math.max(220, Math.floor(height * fxScale));
+    fxCanvas.width = fxWidth;
+    fxCanvas.height = fxHeight;
   }
 
-  function colorForDepth(depth, alpha = 1) {
-    // Root starts magenta; the finest tips migrate toward electric blue/cyan.
-    const normalized = depth / Math.max(1, state.depth);
-    const hue = (185 + normalized * state.hue) % 360;
-    const lightness = 55 + normalized * 4;
-    return `hsla(${hue}, 94%, ${lightness}%, ${alpha})`;
+  function syncDerived() {
+    const phaseRad = state.phase * Math.PI / 180;
+    derived.angle = wrapDegrees(state.phase);
+    derived.scale = clamp(
+      state.baseScale + Math.sin(phaseRad * 0.73 + 0.9) * 0.018 + Math.sin(phaseRad * 1.91 - 0.35) * 0.008,
+      0.56,
+      0.78
+    );
+    derived.colorDrift = wrapDegrees(phaseRad * 36 * 180 / Math.PI);
+    derived.layerRotation = phaseRad * 0.24 + Math.sin(phaseRad * 0.47) * 0.55;
+    derived.ringPulse = 0.5 + 0.5 * Math.sin(phaseRad * 0.61 - 0.8);
+  }
+
+  function colorForDepth(level, depth, alpha = 1, hueOffset = 0) {
+    const normalized = level / Math.max(1, depth);
+    const hue = wrapDegrees(185 + normalized * state.hue + hueOffset);
+    const lightness = 54 + normalized * 5;
+    return `hsla(${hue}, 96%, ${lightness}%, ${alpha})`;
   }
 
   function effectiveDepth() {
-    // With batched Path2D strokes, 11-12 levels remain practical on iOS.
-    // Very large iPads get one less level to avoid sustained thermal throttling.
     if (isIOS && width * height > 1_050_000) return Math.min(state.depth, 11);
     return Math.min(state.depth, 12);
   }
 
-  function buildTreePaths(depth, branchLength) {
+  function buildTreePaths(opts) {
+    const {
+      w,
+      h,
+      depth,
+      angleDeg,
+      scale,
+      rotation = 0,
+      centerX = w * 0.5,
+      centerY = h * 0.5,
+      branchLength = Math.min(w * 0.245, h * 0.185)
+    } = opts;
+
     const paths = Array.from({ length: depth + 1 }, () => new Path2D());
-    const turn = state.angle * Math.PI / 180;
-    const scale = state.scale;
+    const turn = angleDeg * Math.PI / 180;
 
     function trace(x, y, len, heading, level) {
-      if (level <= 0 || len < 0.45) return;
-
+      if (level <= 0 || len < 0.42) return;
       const x2 = x + Math.cos(heading) * len;
       const y2 = y + Math.sin(heading) * len;
       const path = paths[level];
       path.moveTo(x, y);
       path.lineTo(x2, y2);
-
       const nextLength = len * scale;
       trace(x2, y2, nextLength, heading - turn, level - 1);
       trace(x2, y2, nextLength, heading + turn, level - 1);
     }
 
-    const cx = width * 0.5;
-    const cy = height * 0.5;
-    trace(cx, cy, branchLength, -Math.PI / 2, depth);
-    trace(cx, cy, branchLength, Math.PI / 2, depth);
+    trace(centerX, centerY, branchLength, -Math.PI / 2 + rotation, depth);
+    trace(centerX, centerY, branchLength, Math.PI / 2 + rotation, depth);
     return paths;
   }
 
-  function drawMorphTree() {
-    const depth = effectiveDepth();
-    // Width-driven sizing closely matches the portrait reference and remains stable
-    // as Safari's browser chrome expands/collapses.
-    const branchLength = Math.min(width * 0.245, height * 0.185);
-    const paths = buildTreePaths(depth, branchLength);
+  function strokeTree(context, paths, depth, options = {}) {
+    const {
+      alphaBoost = 1,
+      lineScale = 1,
+      glowScale = 1,
+      hueOffset = 0,
+      blurClamp = state.glow,
+      composite = 'source-over'
+    } = options;
 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    context.globalCompositeOperation = composite;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
 
     for (let level = 1; level <= depth; level++) {
       const strength = level / depth;
-      const alpha = 0.48 + strength * 0.42;
-      ctx.strokeStyle = colorForDepth(level, alpha);
-      ctx.shadowColor = colorForDepth(level, 0.72);
-      ctx.shadowBlur = state.glow * (isIOS ? 0.72 : 0.88);
-      ctx.lineWidth = 0.48 + strength * 1.05;
-      ctx.stroke(paths[level]);
+      const alpha = (0.46 + strength * 0.44) * alphaBoost;
+      context.strokeStyle = colorForDepth(level, depth, clamp(alpha, 0, 1), hueOffset);
+      context.shadowColor = colorForDepth(level, depth, 0.68 * alphaBoost, hueOffset);
+      context.shadowBlur = Math.min(blurClamp, state.glow * glowScale);
+      context.lineWidth = (0.48 + strength * 1.08) * lineScale;
+      context.stroke(paths[level]);
     }
 
-    ctx.shadowBlur = 0;
+    context.shadowBlur = 0;
+    context.globalCompositeOperation = 'source-over';
+  }
+
+  function drawForegroundTree() {
+    const depth = effectiveDepth();
+    const branchLength = Math.min(width * 0.245, height * 0.185);
+    const paths = buildTreePaths({
+      w: width,
+      h: height,
+      depth,
+      angleDeg: derived.angle,
+      scale: derived.scale,
+      branchLength
+    });
+
+    strokeTree(ctx, paths, depth, {
+      alphaBoost: 1,
+      lineScale: 1,
+      glowScale: isIOS ? 0.72 : 0.9,
+      hueOffset: derived.colorDrift * 0.15,
+      blurClamp: isIOS ? 18 : 24
+    });
+  }
+
+  function drawLayerField() {
+    if (!state.layerEnabled || state.layerIntensity <= 0.001) return;
+
+    const redrawLayer = !isIOS || layerFrameParity === 0 || !state.playing;
+    layerFrameParity ^= 1;
+
+    if (redrawLayer) {
+      fxCtx.setTransform(1, 0, 0, 1, 0, 0);
+      fxCtx.fillStyle = '#000';
+      fxCtx.fillRect(0, 0, fxWidth, fxHeight);
+
+      const depth = Math.max(7, effectiveDepth() - 1);
+      const branchLength = Math.min(fxWidth * 0.22, fxHeight * 0.165);
+      const baseOpts = {
+        w: fxWidth,
+        h: fxHeight,
+        depth,
+        angleDeg: wrapDegrees(derived.angle * 0.94 + 18),
+        scale: clamp(derived.scale * 0.985, 0.56, 0.79),
+        branchLength
+      };
+
+      const pathsA = buildTreePaths({
+        ...baseOpts,
+        rotation: derived.layerRotation * 0.6
+      });
+      strokeTree(fxCtx, pathsA, depth, {
+        alphaBoost: 0.74,
+        lineScale: 1.1,
+        glowScale: 0.6,
+        hueOffset: derived.colorDrift * 0.5,
+        blurClamp: 10,
+        composite: 'screen'
+      });
+
+      const pathsB = buildTreePaths({
+        ...baseOpts,
+        angleDeg: wrapDegrees(derived.angle * 0.62 + 54),
+        scale: clamp(derived.scale * 0.965, 0.55, 0.78),
+        rotation: Math.PI / 2 + derived.layerRotation * 0.35
+      });
+      strokeTree(fxCtx, pathsB, depth, {
+        alphaBoost: 0.58,
+        lineScale: 0.95,
+        glowScale: 0.5,
+        hueOffset: 120 + derived.colorDrift * 0.28,
+        blurClamp: 9,
+        composite: 'lighter'
+      });
+
+      fxCtx.globalCompositeOperation = 'lighter';
+      fxCtx.globalAlpha = 0.06 + state.layerIntensity * 0.12;
+      const gradient = fxCtx.createRadialGradient(
+        fxWidth * 0.5,
+        fxHeight * 0.5,
+        0,
+        fxWidth * 0.5,
+        fxHeight * 0.5,
+        Math.max(fxWidth, fxHeight) * 0.55
+      );
+      gradient.addColorStop(0, `hsla(${wrapDegrees(derived.colorDrift + 300)}, 100%, 62%, 0.75)`);
+      gradient.addColorStop(0.45, `hsla(${wrapDegrees(derived.colorDrift + 120)}, 100%, 58%, 0.35)`);
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      fxCtx.fillStyle = gradient;
+      fxCtx.fillRect(0, 0, fxWidth, fxHeight);
+      fxCtx.globalAlpha = 1;
+      fxCtx.globalCompositeOperation = 'source-over';
+    }
+
+    const a = state.layerIntensity;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.32 + a * 0.2;
+    ctx.drawImage(fxCanvas, 0, 0, width, height);
+
+    ctx.save();
+    ctx.translate(width, 0);
+    ctx.scale(-1, 1);
+    ctx.globalAlpha = 0.18 + a * 0.18;
+    ctx.drawImage(fxCanvas, 0, 0, width, height);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(width * 0.5, height * 0.5);
+    ctx.rotate(derived.layerRotation);
+    const zoom = 1.02 + derived.ringPulse * 0.14;
+    ctx.scale(zoom, zoom);
+    ctx.globalAlpha = 0.12 + a * 0.16;
+    ctx.drawImage(fxCanvas, -width * 0.5, -height * 0.5, width, height);
+    ctx.restore();
+    ctx.restore();
+
+    drawRingOverlay(a);
+  }
+
+  function drawRingOverlay(intensity) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.98)';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.min(width, height) * (0.06 + intensity * 0.035);
+
+    const radius = Math.min(width, height) * (0.14 + intensity * 0.05);
+    const midX = width * 0.5;
+    const centers = [height * 0.16, height * 0.5, height * 0.84];
+
+    for (const cy of centers) {
+      ctx.beginPath();
+      ctx.arc(midX, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const sideRadius = Math.min(width, height) * 0.28;
+    const sideY = height * 0.5;
+    ctx.beginPath();
+    ctx.arc(-sideRadius * 0.18, sideY, sideRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(width + sideRadius * 0.18, sideY, sideRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function advanceMorph(dt) {
     if (!state.playing || state.morphSpeed <= 0) return;
-
-    let next = state.angle + state.direction * state.morphSpeed * dt;
-
-    // Ping-pong without a visual jump. The loop also handles a long frame after
-    // Safari returns from the background.
-    while (next > MORPH_MAX || next < MORPH_MIN) {
-      if (next > MORPH_MAX) {
-        next = MORPH_MAX - (next - MORPH_MAX);
-        state.direction = -1;
-      } else if (next < MORPH_MIN) {
-        next = MORPH_MIN + (MORPH_MIN - next);
-        state.direction = 1;
-      }
-    }
-
-    state.angle = next;
+    state.phase = wrapDegrees(state.phase + state.morphSpeed * dt);
   }
 
   function syncStaticUi() {
-    $('scaleOut').textContent = state.scale.toFixed(3);
+    $('baseScaleOut').textContent = state.baseScale.toFixed(3);
     $('depthOut').textContent = String(state.depth);
     $('glowOut').textContent = String(state.glow);
     $('hueOut').textContent = state.hue.toFixed(0) + '°';
     $('speedOut').textContent = state.morphSpeed.toFixed(2) + '°/s';
-    $('hudScale').textContent = state.scale.toFixed(3);
+    $('layerOut').textContent = state.layerIntensity.toFixed(2);
+    $('layerToggle').textContent = state.layerEnabled ? 'On' : 'Off';
+    $('layerToggle').classList.toggle('is-on', state.layerEnabled);
+    $('layerToggle').setAttribute('aria-pressed', String(state.layerEnabled));
   }
 
-  function syncAngleUi(force = false, now = performance.now()) {
-    // DOM writes are throttled; the canvas still morphs every rendered frame.
+  function syncLiveUi(force = false, now = performance.now()) {
     if (!force && now - lastUiSync < 80) return;
     lastUiSync = now;
-    $('angle').value = state.angle.toFixed(1);
-    $('angleOut').textContent = state.angle.toFixed(1) + '°';
-    $('hudAngle').textContent = state.angle.toFixed(3);
+    $('angle').value = derived.angle.toFixed(1);
+    $('angleOut').textContent = derived.angle.toFixed(1) + '°';
+    $('hudAngle').textContent = derived.angle.toFixed(3);
+    $('hudScale').textContent = derived.scale.toFixed(3);
   }
 
   function render(now) {
@@ -183,18 +363,17 @@
     lastFrame = now;
 
     advanceMorph(dt);
-    syncAngleUi(false, now);
+    syncDerived();
+    syncLiveUi(false, now);
 
-    // Cap only the hottest/highest-density iOS cases around 30 fps. Animation
-    // state still advances every RAF, so speed remains correct.
     frameParity ^= 1;
     const drawThisFrame = !isIOS || state.dpr < 1.82 || frameParity === 0 || !state.playing;
-
     if (drawThisFrame) {
       ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, width, height);
-      drawMorphTree();
+      drawLayerField();
+      drawForegroundTree();
     }
 
     requestAnimationFrame(render);
@@ -207,17 +386,17 @@
   });
 
   $('angle').addEventListener('input', e => {
-    state.angle = Number(e.target.value);
-    // Continue in the direction that has the most room after manual scrubbing.
-    if (state.angle >= MORPH_MAX - 0.1) state.direction = -1;
-    if (state.angle <= MORPH_MIN + 0.1) state.direction = 1;
-    syncAngleUi(true);
+    state.phase = Number(e.target.value);
+    syncDerived();
+    syncLiveUi(true);
     showControls();
   });
 
-  $('scale').addEventListener('input', e => {
-    state.scale = Number(e.target.value);
+  $('baseScale').addEventListener('input', e => {
+    state.baseScale = Number(e.target.value);
+    syncDerived();
     syncStaticUi();
+    syncLiveUi(true);
     showControls();
   });
 
@@ -239,28 +418,44 @@
     showControls();
   });
 
+  $('layerIntensity').addEventListener('input', e => {
+    state.layerIntensity = Number(e.target.value);
+    syncStaticUi();
+    showControls();
+  });
+
+  $('layerToggle').addEventListener('click', () => {
+    state.layerEnabled = !state.layerEnabled;
+    syncStaticUi();
+    showControls();
+  });
+
   $('reset').addEventListener('click', () => {
     Object.assign(state, {
-      angle: 28.3,
-      scale: 0.707,
+      phase: 28.3,
+      baseScale: 0.707,
       depth: 11,
       glow: 14,
-      hue: 105,
-      morphSpeed: 3.5,
-      direction: 1,
+      hue: 120,
+      morphSpeed: 7.5,
+      layerEnabled: true,
+      layerIntensity: 0.62,
       playing: true
     });
 
     $('morphSpeed').value = state.morphSpeed;
-    $('angle').value = state.angle;
-    $('scale').value = state.scale;
+    $('angle').value = state.phase;
+    $('baseScale').value = state.baseScale;
     $('depth').value = state.depth;
     $('glow').value = state.glow;
     $('hue').value = state.hue;
+    $('layerIntensity').value = state.layerIntensity;
     $('animate').textContent = 'Pause morph';
     $('animate').setAttribute('aria-pressed', 'true');
+    syncDerived();
     syncStaticUi();
-    syncAngleUi(true);
+    syncLiveUi(true);
+    lastFrame = performance.now();
     showControls();
   });
 
@@ -304,7 +499,6 @@
     }
   });
 
-  // Keep the canvas feeling native on iOS Safari instead of panning/zooming the page.
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
     document.addEventListener(type, e => e.preventDefault(), { passive: false });
   });
@@ -318,8 +512,9 @@
   });
 
   resize();
+  syncDerived();
   syncStaticUi();
-  syncAngleUi(true);
+  syncLiveUi(true);
   showControls();
   requestAnimationFrame(render);
 })();

@@ -31,7 +31,7 @@ canvas {
   position: fixed;
   top: max(12px, calc(var(--safe-top) + 8px));
   right: max(12px, calc(var(--safe-right) + 8px));
-  min-width: 94px; padding: 9px 11px;
+  min-width: 96px; padding: 9px 11px;
   border: 1px solid rgba(255,255,255,.18); border-radius: 13px;
   background: rgba(7,10,11,.58);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
@@ -45,8 +45,8 @@ canvas {
   position: fixed;
   left: max(10px, calc(var(--safe-left) + 8px));
   bottom: max(10px, calc(var(--safe-bottom) + 8px));
-  width: min(370px, calc(100vw - max(20px, calc(var(--safe-left) + var(--safe-right) + 16px))));
-  max-height: min(78dvh, 650px); overflow-y: auto; overscroll-behavior: contain;
+  width: min(380px, calc(100vw - max(20px, calc(var(--safe-left) + var(--safe-right) + 16px))));
+  max-height: min(80dvh, 720px); overflow-y: auto; overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 14px 16px 16px; border: 1px solid var(--line); border-radius: 22px;
   background: var(--panel);
@@ -62,13 +62,14 @@ canvas {
 .controls__header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom: 6px; }
 .eyebrow { color: #6dffcf; letter-spacing: .17em; font-size: 10px; font-weight: 800; }
 h1 { margin: 2px 0 0; font-size: 23px; font-weight: 650; letter-spacing: -.025em; }
-.iconButton, .reveal, .action, select { color: #fff; border: 1px solid var(--line); background: rgba(255,255,255,.07); }
+.iconButton, .reveal, .action, .toggle { color: #fff; border: 1px solid var(--line); background: rgba(255,255,255,.07); }
 .iconButton {
   width: 44px; height:44px; flex: 0 0 44px; border-radius: 13px; font-size:24px; cursor:pointer;
   display:grid; place-items:center;
 }
 .field { display:block; margin-top: 11px; font-size: 12px; color: var(--muted); }
-.field > span { display:flex; justify-content:space-between; margin-bottom:7px; }
+.field > span { display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; gap: 12px; }
+.field--toggle > span { margin-bottom: 0; }
 output { color: #fff; font-variant-numeric: tabular-nums; }
 input[type="range"] {
   width:100%; height: 34px; margin: 0; accent-color:#6dffcf; touch-action: pan-x;
@@ -78,14 +79,11 @@ input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%;
   background: #fff; margin-top: -9.5px; border: 0; box-shadow: 0 2px 9px rgba(0,0,0,.35);
 }
-select {
-  width:100%; min-height:44px; border-radius:12px; padding: 0 36px 0 12px; outline:none;
-  background-image: linear-gradient(45deg, transparent 50%, rgba(255,255,255,.75) 50%), linear-gradient(135deg, rgba(255,255,255,.75) 50%, transparent 50%);
-  background-position: calc(100% - 18px) 19px, calc(100% - 13px) 19px;
-  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+.toggle {
+  min-width: 68px; min-height: 38px; border-radius: 999px; padding: 0 14px; font-weight: 650; cursor: pointer;
 }
+.toggle.is-on { background: rgba(109,255,207,.14); border-color: rgba(109,255,207,.35); }
 .buttonRow { display:grid; grid-template-columns: 1fr 1fr; gap:9px; margin-top:14px; }
-.buttonRow--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .action { min-height: 46px; border-radius: 13px; cursor:pointer; font-weight:650; }
 .action--primary { background: rgba(109,255,207,.14); border-color: rgba(109,255,207,.35); }
 .hint { color: rgba(255,255,255,.48); font-size:11px; line-height:1.45; margin: 11px 2px 0; }
@@ -107,16 +105,15 @@ kbd { font: inherit; border:1px solid var(--line); border-bottom-width:2px; bord
     right: max(8px, calc(var(--safe-right) + 6px));
     bottom: max(8px, calc(var(--safe-bottom) + 6px));
     width: auto; padding: 10px 14px 14px; border-radius: 22px;
-    max-height: min(72dvh, 560px);
+    max-height: min(72dvh, 620px);
   }
   .grabber { display:block; }
-  .buttonRow--three { grid-template-columns: 1fr; }
   .hint { display:none; }
   h1 { font-size: 21px; }
   .field { margin-top: 9px; }
 }
-@media (orientation: landscape) and (max-height: 500px) {
-  .controls { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); width: min(340px, 48vw); }
+@media (orientation: landscape) and (max-height: 520px) {
+  .controls { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); width: min(350px, 48vw); }
   .field { margin-top: 7px; }
   .buttonRow { margin-top: 10px; }
   .hint { display:none; }

@@ -1,21 +1,41 @@
-# Recursive Neon Morph
+# Recursive Neon Morph+
 
-A dependency-free GitHub Pages app based on the supplied reference video.
+A dependency-free GitHub Pages app rebuilt from the supplied videos and screenshots.
 
 ## What changed in this rebuild
 
-The reference is not switching between unrelated shape presets. It is one symmetric binary recursive tree whose **branch angle changes continuously** while the scale remains around **0.707**. Changing that one angle naturally produces the tree, spiral/hexagonal, tiled, and H-grid structures seen in the video.
+This version replaces the old **bounce** loop with a **continuously increasing phase**.
 
-This build therefore:
+That single phase now drives multiple behaviors at once:
 
-- starts at **28.3° / 0.707**, matching the supplied screenshot;
-- continuously morphs the angle between **2° and 90°** and back without jumps;
-- defaults to **3.5° per second**, close to the rate visible in the reference video;
-- exposes a **Morph speed** slider (0.25–12°/s);
-- keeps manual angle scrubbing, scale, depth, glow, and hue controls;
-- collapses the controls when idle;
-- batches recursion into one canvas path per depth, which is substantially faster on iOS Safari than stroking every branch individually;
-- caps rendering density on high-DPI iPhones/iPads to reduce heat and Safari memory pressure.
+- the recursive branch angle continuously advances from **0° to 360°** and wraps cleanly;
+- the scale gently drifts around the base value instead of staying perfectly static;
+- the color field slowly shifts over time;
+- an optional kaleidoscopic background layer adds the circular / ring-like structure inspired by the latest reference montage.
+
+The result is a loop that keeps morphing forward instead of reversing back on itself.
+
+## Controls
+
+- **Morph speed** — degrees per second for the continuously advancing phase
+- **Angle phase** — manual scrub of the current morph position
+- **Base scale** — center value for the slow scale drift
+- **Depth / Glow / Hue spread** — visual tuning
+- **Kaleido layer** — toggle the background layer on/off
+- **Layer intensity** — strength of that layer
+- **Pause morph** — pause / resume
+- Controls auto-hide after inactivity and can be restored with touch/mouse movement or **C**.
+
+## iOS notes
+
+The app keeps the existing iPhone/iPad Safari optimizations:
+
+- safe-area support
+- dynamic viewport handling
+- touch-friendly controls
+- prevention of accidental page pan/zoom on the canvas
+- capped internal rendering density to reduce heat and memory pressure
+- lower-resolution processing for the background layer on iOS
 
 ## Publish on GitHub Pages
 
@@ -25,4 +45,4 @@ This build therefore:
 4. Select your default branch and `/ (root)`.
 5. Save.
 
-No packages, framework, or build step are required.
+No framework, packages, or build step are required.
